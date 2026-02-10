@@ -1,8 +1,12 @@
 "use client";
 
-import { Calculator, Github } from "lucide-react";
+import { Calculator, Github, Settings } from "lucide-react";
 
-export function Header() {
+interface HeaderProps {
+  onSettingsClick: () => void;
+}
+
+export function Header({ onSettingsClick }: HeaderProps) {
   return (
     <header className="border-b border-border bg-surface/50 backdrop-blur-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -19,7 +23,14 @@ export function Header() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onSettingsClick}
+            className="p-2 rounded-lg hover:bg-surface-hover text-muted-foreground hover:text-foreground transition-colors"
+            title="Estimation Settings"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
           <a
             href="https://github.com/Brad-Fullwood/bc-quote-estimator"
             target="_blank"

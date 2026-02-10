@@ -1,52 +1,33 @@
-import type { TaskCategory, Complexity } from "./types";
+import type { TaskCategory, Complexity, EstimationSettings } from "./types";
 
 /**
  * Base hour ranges for each BC task category.
- * [min, max] - the AI picks within this range based on context,
- * then complexity multipliers are applied.
+ * These are intentionally tight — the AI picks within range,
+ * then settings-based multipliers adjust from there.
  */
 export const BASE_HOURS: Record<TaskCategory, [number, number]> = {
-  table: [2, 4],
-  "table-extension": [1, 3],
-  "page-card": [3, 6],
-  "page-list": [3, 6],
-  "page-extension": [2, 4],
-  "codeunit-simple": [4, 8],
-  "codeunit-complex": [8, 20],
-  report: [4, 12],
-  "api-integration": [8, 24],
-  "data-migration": [4, 16],
-  enum: [0.5, 1],
-  "permission-set": [1, 2],
-  "event-subscriber": [2, 4],
-  workflow: [4, 12],
-  notification: [2, 4],
-  xmlport: [4, 8],
-  query: [2, 4],
-  configuration: [2, 4],
-  testing: [2, 6],
-  documentation: [1, 4],
-  deployment: [2, 4],
+  table: [1, 3],
+  "table-extension": [0.5, 2],
+  "page-card": [2, 4],
+  "page-list": [2, 4],
+  "page-extension": [1, 3],
+  "codeunit-simple": [2, 5],
+  "codeunit-complex": [4, 12],
+  report: [3, 8],
+  "api-integration": [4, 16],
+  "data-migration": [3, 10],
+  enum: [0.25, 0.5],
+  "permission-set": [0.5, 1],
+  "event-subscriber": [1, 3],
+  workflow: [3, 8],
+  notification: [1, 3],
+  xmlport: [2, 6],
+  query: [1, 3],
+  configuration: [1, 3],
+  testing: [1, 4],
+  documentation: [0.5, 2],
+  deployment: [1, 3],
 };
-
-/**
- * Complexity multipliers applied to the base hours.
- */
-export const COMPLEXITY_MULTIPLIERS: Record<Complexity, number> = {
-  simple: 1.0,
-  medium: 1.5,
-  complex: 2.0,
-  "very-complex": 3.0,
-};
-
-/**
- * Overhead percentages applied to the subtotal.
- */
-export const OVERHEAD = {
-  codeReview: 0.15,
-  testing: 0.20,
-  projectManagement: 0.10,
-} as const;
 
 /**
  * Human-readable labels for task categories.
@@ -103,13 +84,30 @@ export const CATEGORY_COLORS: Record<TaskCategory, string> = {
 };
 
 /**
- * Calculate adjusted hours given base hours and complexity.
+ * Get complexity multipliers from settings.
+ */
+export function getComplexityMultipliers(
+  settings: EstimationSettings
+): Record<Complexity, number> {
+  return {
+    simple: settings.complexitySimple,
+    medium: settings.complexityMedium,
+    complex: settings.complexityComplex,
+    "very-complex": settings.complexityVeryComplex,
+  };
+}
+
+/**
+ * Calculate adjusted hours given base hours, complexity, and settings.
  */
 export function calculateAdjustedHours(
   baseHours: number,
-  complexity: Complexity
+  complexity: Complexity,
+  settings: EstimationSettings
 ): number {
-  return Math.round(baseHours * COMPLEXITY_MULTIPLIERS[complexity] * 10) / 10;
+  const multipliers = getComplexityMultipliers(settings);
+  const adjusted = baseHours * multipliers[complexity] * settings.globalMultiplier;
+  return Math.round(adjusted * 10) / 10;
 }
 
 /**
@@ -120,27 +118,27 @@ export function calculateBreakdown(
     baseHours: number;
     complexity: Complexity;
   }>,
-  contingencyPercent: number = 15
+  settings: EstimationSettings
 ) {
   const subtotalHours = tasks.reduce((sum, task) => {
-    return sum + calculateAdjustedHours(task.baseHours, task.complexity);
+    return sum + calculateAdjustedHours(task.baseHours, task.complexity, settings);
   }, 0);
 
   const codeReviewHours =
-    Math.round(subtotalHours * OVERHEAD.codeReview * 10) / 10;
+    Math.round(subtotalHours * (settings.codeReviewPercent / 100) * 10) / 10;
   const testingHours =
-    Math.round(subtotalHours * OVERHEAD.testing * 10) / 10;
+    Math.round(subtotalHours * (settings.testingPercent / 100) * 10) / 10;
   const projectManagementHours =
-    Math.round(subtotalHours * OVERHEAD.projectManagement * 10) / 10;
+    Math.round(subtotalHours * (settings.projectManagementPercent / 100) * 10) / 10;
 
   const beforeContingency =
     subtotalHours + codeReviewHours + testingHours + projectManagementHours;
   const contingencyHours =
-    Math.round(beforeContingency * (contingencyPercent / 100) * 10) / 10;
+    Math.round(beforeContingency * (settings.contingencyPercent / 100) * 10) / 10;
 
   const totalHours =
     Math.round((beforeContingency + contingencyHours) * 10) / 10;
-  const totalDays = Math.round((totalHours / 7.5) * 10) / 10;
+  const totalDays = Math.round((totalHours / settings.hoursPerDay) * 10) / 10;
 
   return {
     subtotalHours: Math.round(subtotalHours * 10) / 10,

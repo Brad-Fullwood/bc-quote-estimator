@@ -1,72 +1,125 @@
 import { BASE_HOURS, CATEGORY_LABELS } from "./estimation-rules";
-import type { TaskCategory } from "./types";
+import type { TaskCategory, EstimationSettings } from "./types";
 
-const categoryReference = (Object.entries(BASE_HOURS) as [TaskCategory, [number, number]][])
-  .map(([key, [min, max]]) => `  - "${key}" (${CATEGORY_LABELS[key]}): ${min}-${max} base hours`)
+const categoryReference = (
+  Object.entries(BASE_HOURS) as [TaskCategory, [number, number]][]
+)
+  .map(
+    ([key, [min, max]]) =>
+      `  - "${key}" (${CATEGORY_LABELS[key]}): ${min}-${max} base hours`
+  )
   .join("\n");
 
-export const SYSTEM_PROMPT = `You are an expert Microsoft Dynamics 365 Business Central developer with 15+ years of experience estimating AL development projects. Your job is to analyze project requirements and break them down into specific, actionable development tasks with accurate time estimates.
+const STYLE_LABELS: Record<number, string> = {
+  1: "lean",
+  2: "realistic",
+  3: "padded",
+};
 
-You have deep knowledge of:
-- AL language development (tables, pages, codeunits, reports, queries, xmlports)
-- BC architecture patterns (event subscribers, interfaces, extension model)
-- Common BC functional areas (Sales, Purchase, Inventory, Finance, Manufacturing, Warehouse, Service, Jobs)
-- Integration patterns (APIs, web services, data migration, Power Platform)
-- Testing methodologies for BC (test codeunits, page test helpers)
-- Deployment and DevOps for BC (Docker, pipelines, environments)
+const EXPERIENCE_LABELS: Record<number, string> = {
+  1: "expert (10+ years BC, very fast, knows all patterns)",
+  2: "senior (5+ years BC, fast, knows most patterns)",
+  3: "mid-level (2-5 years BC, moderate speed)",
+  4: "junior (under 2 years BC, needs more time)",
+};
+
+const GRANULARITY_INSTRUCTIONS: Record<number, string> = {
+  1: "Group related work into FEWER, LARGER tasks. For example, a table + its page + its codeunit logic for one feature should be ONE task, not three. Aim for 3-8 tasks total for a typical project. Don't create separate tasks for enums, permission sets, or other trivial objects — fold them into the parent task.",
+  2: "Break work into a sensible number of tasks. Group closely related objects together (e.g. a table and its page can be one task) but keep distinct functional areas separate. Aim for 5-12 tasks for a typical project.",
+  3: "Break work into granular, individually-deliverable tasks. Each distinct AL object or piece of functionality should be its own task. This gives maximum visibility into the work.",
+};
+
+export function buildSystemPrompt(settings: EstimationSettings): string {
+  const style = STYLE_LABELS[settings.estimationStyle] ?? "realistic";
+  const experience =
+    EXPERIENCE_LABELS[settings.developerExperience] ?? EXPERIENCE_LABELS[2];
+  const granularity =
+    GRANULARITY_INSTRUCTIONS[settings.taskGranularity] ??
+    GRANULARITY_INSTRUCTIONS[2];
+
+  let styleGuidance: string;
+  if (settings.estimationStyle === 1) {
+    styleGuidance = `ESTIMATION APPROACH: LEAN
+- Estimate for the happy path. An experienced BC developer who knows the patterns.
+- Use the LOWER end of base hour ranges unless there's a clear reason not to.
+- Don't pad for unlikely edge cases or hypothetical complexity.
+- Assume the developer has done similar work before and won't need ramp-up time.
+- Only flag genuine unknowns, not routine BC development concerns.
+- Do NOT include separate tasks for testing, documentation, or deployment unless explicitly requested — those are handled as overhead percentages separately.`;
+  } else if (settings.estimationStyle === 3) {
+    styleGuidance = `ESTIMATION APPROACH: PADDED / CONSERVATIVE
+- Estimate for a cautious timeline with buffer built in.
+- Use the UPPER end of base hour ranges.
+- Consider edge cases, data validation, error handling, and permissions.
+- Factor in BC-specific gotchas: posting routines, dimensions, number series.
+- Include tasks for setup, configuration, and environment preparation.
+- If requirements are vague, note assumptions and estimate higher.`;
+  } else {
+    styleGuidance = `ESTIMATION APPROACH: REALISTIC
+- Estimate what it would actually take a competent BC developer.
+- Use the MIDDLE of base hour ranges, adjusting based on apparent complexity.
+- Consider common gotchas but don't pad for unlikely scenarios.
+- Balance thoroughness with pragmatism.`;
+  }
+
+  const customContext = settings.customPromptContext?.trim()
+    ? `\n\nADDITIONAL CONTEXT FROM THE USER:\n${settings.customPromptContext}`
+    : "";
+
+  return `You are an expert Microsoft Dynamics 365 Business Central developer estimating AL development projects. Break requirements into specific, actionable development tasks with time estimates.
+
+DEVELOPER PROFILE: ${experience}
+
+${styleGuidance}
+
+TASK GRANULARITY:
+${granularity}
 
 TASK CATEGORIES AND BASE HOUR RANGES:
 ${categoryReference}
 
-COMPLEXITY LEVELS:
-- "simple": Standard, well-documented pattern with minimal business logic (1.0x multiplier)
-- "medium": Some custom business logic or non-standard requirements (1.5x multiplier)
-- "complex": Significant custom logic, multiple integrations, or non-trivial data handling (2.0x multiplier)
-- "very-complex": Novel patterns, complex algorithms, heavy integration, or significant unknowns (3.0x multiplier)
+COMPLEXITY LEVELS (multipliers are applied AFTER your estimate, so estimate base hours only):
+- "simple": Straightforward, standard pattern (multiplied by ${settings.complexitySimple}x after)
+- "medium": Some custom logic or non-standard requirements (multiplied by ${settings.complexityMedium}x after)
+- "complex": Significant custom logic or multiple moving parts (multiplied by ${settings.complexityComplex}x after)
+- "very-complex": Novel patterns, heavy integration, significant unknowns (multiplied by ${settings.complexityVeryComplex}x after)
 
-IMPORTANT ESTIMATION GUIDELINES:
-1. Be realistic, not optimistic. Under-estimation is worse than over-estimation.
-2. Consider hidden complexity: data validation, error handling, edge cases, permissions.
-3. Each task should be a discrete, deliverable unit of work.
-4. Include setup/scaffolding tasks (app object ranges, project structure) if this is a new extension.
-5. Consider dependencies between tasks.
-6. Factor in BC-specific gotchas: posting routines, dimension handling, number series, approval workflows.
-7. If requirements are vague, note assumptions and lean toward higher estimates.
-8. Think about what could go wrong - integration issues, data quality problems, performance concerns.
+CRITICAL RULES:
+1. The baseHours you provide are RAW development hours BEFORE any multipliers.
+2. Complexity multipliers, overhead (code review, testing, PM), and contingency are added AUTOMATICALLY by the system — do NOT bake them into your baseHours.
+3. Do NOT create separate tasks for: code review, testing/QA, project management, documentation, or deployment UNLESS the requirements explicitly call for something unusual in those areas. These are handled as percentage overheads.
+4. Prefer "simple" or "medium" complexity for standard BC patterns. Reserve "complex" and "very-complex" for genuinely difficult work.
+5. An experienced BC dev can create a basic table + page in under 2 hours. Keep estimates grounded.${customContext}
 
-You MUST respond with valid JSON matching this exact structure:
+Respond with ONLY valid JSON matching this structure:
 {
   "tasks": [
     {
       "id": "task-1",
       "title": "Short descriptive title",
-      "description": "What this task involves and why",
+      "description": "What this task involves",
       "category": "one of the category keys listed above",
       "complexity": "simple|medium|complex|very-complex",
-      "baseHours": <number within the category's range, can exceed for very large tasks>,
-      "dependencies": ["task-id of any prerequisite tasks"],
-      "notes": "Any caveats, assumptions, or risks for this specific task"
+      "baseHours": <number — raw dev hours, no padding>,
+      "dependencies": ["task-id"],
+      "notes": "Caveats or assumptions"
     }
   ],
   "confidence": "low|medium|high",
-  "assumptions": ["List of assumptions made about the requirements"],
-  "risks": ["List of risks that could affect the estimate"]
+  "assumptions": ["Assumptions made"],
+  "risks": ["Risks that could affect the estimate"]
 }
 
-CONFIDENCE LEVELS:
-- "high": Requirements are clear and well-defined, you've done similar work many times
-- "medium": Requirements are mostly clear but some areas need clarification
-- "low": Requirements are vague, there are significant unknowns, or the scope could vary widely
-
-Respond ONLY with the JSON. No markdown, no code fences, no explanation outside the JSON.`;
+Respond ONLY with JSON. No markdown, no code fences.`;
+}
 
 export function buildUserPrompt(requirements: string): string {
-  return `Please analyze the following Business Central development requirements and break them down into specific, estimatable tasks.
+  return `Analyze these Business Central development requirements and break them into estimatable tasks.
 
 REQUIREMENTS:
 ---
 ${requirements}
 ---
 
-Remember: respond with ONLY valid JSON matching the required structure. Be thorough - it's better to identify more granular tasks than to lump things together. Consider all the BC objects that will need to be created or modified.`;
+Respond with ONLY valid JSON. Remember: baseHours = raw dev time only. Multipliers and overhead are added automatically.`;
 }

@@ -1,28 +1,56 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Loader2, Sparkles, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/header";
 import { ApiKeyInput } from "@/components/api-key-input";
 import { RequirementsInput } from "@/components/requirements-input";
-import { SettingsPanel } from "@/components/settings-panel";
+import { SettingsModal } from "@/components/settings-modal";
 import { EstimationResults } from "@/components/estimation-results";
-import type { AIProvider, QuoteResponse } from "@/lib/types";
+import type { AIProvider, EstimationSettings, QuoteResponse } from "@/lib/types";
+import { DEFAULT_SETTINGS } from "@/lib/types";
+
+const SETTINGS_KEY = "bc-quote-settings";
+
+function loadSettings(): EstimationSettings {
+  if (typeof window === "undefined") return DEFAULT_SETTINGS;
+  try {
+    const saved = localStorage.getItem(SETTINGS_KEY);
+    if (!saved) return DEFAULT_SETTINGS;
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+function saveSettings(settings: EstimationSettings) {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
 
 export default function Home() {
   const [provider, setProvider] = useState<AIProvider>("anthropic");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
   const [requirements, setRequirements] = useState("");
-  const [hourlyRate, setHourlyRate] = useState(0);
-  const [contingencyPercent, setContingencyPercent] = useState(15);
+  const [settings, setSettings] = useState<EstimationSettings>(DEFAULT_SETTINGS);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<QuoteResponse | null>(null);
+
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    setSettings(loadSettings());
+  }, []);
 
   const handleApiKeyChange = useCallback((key: string) => {
     setApiKey(key);
   }, []);
+
+  function handleSettingsChange(newSettings: EstimationSettings) {
+    setSettings(newSettings);
+    saveSettings(newSettings);
+  }
 
   async function handleEstimate() {
     if (!requirements.trim()) {
@@ -46,8 +74,8 @@ export default function Home() {
           requirements,
           provider,
           model,
-          contingencyPercent,
           apiKey,
+          settings,
         }),
       });
 
@@ -76,7 +104,13 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header />
+      <Header onSettingsClick={() => setSettingsOpen(true)} />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        settings={settings}
+        onSettingsChange={handleSettingsChange}
+      />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
         {/* Hero */}
@@ -85,10 +119,9 @@ export default function Home() {
             Stop Under-Quoting BC Projects
           </h2>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            Paste your requirements or upload a PDF. AI breaks them down into
+            Paste your requirements or upload a document. AI breaks them down into
             specific Business Central development tasks with realistic time
-            estimates &mdash; including the hidden complexity you always forget to
-            quote for.
+            estimates &mdash; tuned to your experience and preferences.
           </p>
         </div>
 
@@ -105,7 +138,7 @@ export default function Home() {
                 New Estimate
               </button>
             </div>
-            <EstimationResults result={result} hourlyRate={hourlyRate} />
+            <EstimationResults result={result} settings={settings} />
           </div>
         ) : (
           /* Input View */
@@ -146,12 +179,6 @@ export default function Home() {
                 onApiKeyChange={handleApiKeyChange}
                 model={model}
                 onModelChange={setModel}
-              />
-              <SettingsPanel
-                hourlyRate={hourlyRate}
-                onHourlyRateChange={setHourlyRate}
-                contingencyPercent={contingencyPercent}
-                onContingencyChange={setContingencyPercent}
               />
             </div>
           </div>

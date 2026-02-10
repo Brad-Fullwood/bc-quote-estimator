@@ -13,16 +13,16 @@ import {
   Shield,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { QuoteResponse, EstimationTask } from "@/lib/types";
+import type { QuoteResponse, EstimationTask, EstimationSettings } from "@/lib/types";
 import {
   CATEGORY_LABELS,
   CATEGORY_COLORS,
-  COMPLEXITY_MULTIPLIERS,
+  getComplexityMultipliers,
 } from "@/lib/estimation-rules";
 
 interface EstimationResultsProps {
   result: QuoteResponse;
-  hourlyRate: number;
+  settings: EstimationSettings;
 }
 
 function ConfidenceBadge({ confidence }: { confidence: string }) {
@@ -64,7 +64,15 @@ function ConfidenceBadge({ confidence }: { confidence: string }) {
   );
 }
 
-function TaskRow({ task, index }: { task: EstimationTask; index: number }) {
+function TaskRow({
+  task,
+  index,
+  multipliers,
+}: {
+  task: EstimationTask;
+  index: number;
+  multipliers: Record<string, number>;
+}) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -85,7 +93,7 @@ function TaskRow({ task, index }: { task: EstimationTask; index: number }) {
           <p className="text-xs text-muted-foreground">
             {CATEGORY_LABELS[task.category]} &middot;{" "}
             <span className="capitalize">{task.complexity}</span> (
-            {COMPLEXITY_MULTIPLIERS[task.complexity]}x)
+            {multipliers[task.complexity]}x)
           </p>
         </div>
         <div className="text-right shrink-0">
@@ -122,10 +130,12 @@ function TaskRow({ task, index }: { task: EstimationTask; index: number }) {
 
 export function EstimationResults({
   result,
-  hourlyRate,
+  settings,
 }: EstimationResultsProps) {
   const { breakdown } = result;
-  const totalCost = hourlyRate > 0 ? breakdown.totalHours * hourlyRate : null;
+  const multipliers = getComplexityMultipliers(settings);
+  const totalCost =
+    settings.hourlyRate > 0 ? breakdown.totalHours * settings.hourlyRate : null;
 
   function generateTextSummary(): string {
     const lines: string[] = [
@@ -144,7 +154,7 @@ export function EstimationResults({
       lines.push(
         `${i + 1}. ${task.title}`,
         `   Category: ${CATEGORY_LABELS[task.category]}`,
-        `   Complexity: ${task.complexity} (${COMPLEXITY_MULTIPLIERS[task.complexity]}x)`,
+        `   Complexity: ${task.complexity} (${multipliers[task.complexity]}x)`,
         `   Hours: ${task.adjustedHours}h (base: ${task.baseHours}h)`,
         `   ${task.description}`,
         ""
@@ -156,9 +166,9 @@ export function EstimationResults({
       "SUMMARY",
       "-".repeat(50),
       `Development:       ${breakdown.subtotalHours}h`,
-      `Code Review (15%): ${breakdown.codeReviewHours}h`,
-      `Testing (20%):     ${breakdown.testingHours}h`,
-      `Project Mgmt (10%):${breakdown.projectManagementHours}h`,
+      `Code Review:       ${breakdown.codeReviewHours}h`,
+      `Testing:           ${breakdown.testingHours}h`,
+      `Project Mgmt:      ${breakdown.projectManagementHours}h`,
       `Contingency:       ${breakdown.contingencyHours}h`,
       "-".repeat(50),
       `TOTAL:             ${breakdown.totalHours}h (~${breakdown.totalDays} days)`,
@@ -267,7 +277,7 @@ export function EstimationResults({
         {totalCost !== null && (
           <div className="bg-accent/10 border border-accent/20 rounded-lg p-4 mb-6">
             <p className="text-sm text-accent-foreground">
-              Estimated cost at £{hourlyRate}/hour:{" "}
+              Estimated cost at £{settings.hourlyRate}/hour:{" "}
               <span className="text-lg font-bold">
                 £
                 {totalCost.toLocaleString("en-GB", {
@@ -291,7 +301,7 @@ export function EstimationResults({
         <h3 className="text-lg font-semibold mb-4">Task Breakdown</h3>
         <div className="space-y-2">
           {breakdown.tasks.map((task, index) => (
-            <TaskRow key={task.id} task={task} index={index} />
+            <TaskRow key={task.id} task={task} index={index} multipliers={multipliers} />
           ))}
         </div>
       </div>

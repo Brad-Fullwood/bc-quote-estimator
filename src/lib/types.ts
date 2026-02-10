@@ -78,3 +78,46 @@ export interface SavedQuote {
   response: QuoteResponse;
   createdAt: string;
 }
+
+export interface EstimationSettings {
+  // Prompt tuning
+  estimationStyle: number; // 1=lean, 2=realistic, 3=padded
+  developerExperience: number; // 1=expert, 2=senior, 3=mid, 4=junior
+  taskGranularity: number; // 1=coarse (fewer bigger tasks), 2=balanced, 3=granular
+  customPromptContext: string; // free text appended to prompt
+
+  // Calculation tuning
+  codeReviewPercent: number;
+  testingPercent: number;
+  projectManagementPercent: number;
+  contingencyPercent: number;
+  hoursPerDay: number;
+  hourlyRate: number;
+
+  // Complexity multipliers
+  complexitySimple: number;
+  complexityMedium: number;
+  complexityComplex: number;
+  complexityVeryComplex: number;
+
+  // Global scaling
+  globalMultiplier: number; // 0.5 - 2.0
+}
+
+export const DEFAULT_SETTINGS: EstimationSettings = {
+  estimationStyle: 2,
+  developerExperience: 2,
+  taskGranularity: 2,
+  customPromptContext: "",
+  codeReviewPercent: 10,
+  testingPercent: 10,
+  projectManagementPercent: 5,
+  contingencyPercent: 10,
+  hoursPerDay: 7.5,
+  hourlyRate: 0,
+  complexitySimple: 1.0,
+  complexityMedium: 1.3,
+  complexityComplex: 1.8,
+  complexityVeryComplex: 2.5,
+  globalMultiplier: 1.0,
+};

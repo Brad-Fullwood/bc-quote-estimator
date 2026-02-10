@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SYSTEM_PROMPT, buildUserPrompt } from "@/lib/ai-prompt";
-import {
-  calculateAdjustedHours,
-  calculateBreakdown,
-} from "@/lib/estimation-rules";
+import { buildSystemPrompt, buildUserPrompt } from "@/lib/ai-prompt";
+import { calculateAdjustedHours, calculateBreakdown } from "@/lib/estimation-rules";
 import type {
   AIProvider,
   EstimationTask,
   EstimationBreakdown,
+  EstimationSettings,
   QuoteResponse,
 } from "@/lib/types";
 
@@ -27,7 +25,12 @@ interface AITaskResponse {
   risks: string[];
 }
 
-async function callAnthropic(requirements: string, apiKey: string, model: string): Promise<string> {
+async function callAnthropic(
+  systemPrompt: string,
+  requirements: string,
+  apiKey: string,
+  model: string
+): Promise<string> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -38,7 +41,7 @@ async function callAnthropic(requirements: string, apiKey: string, model: string
     body: JSON.stringify({
       model,
       max_tokens: 8192,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [
         {
           role: "user",
@@ -57,7 +60,12 @@ async function callAnthropic(requirements: string, apiKey: string, model: string
   return data.content[0].text;
 }
 
-async function callGoogle(requirements: string, apiKey: string, model: string): Promise<string> {
+async function callGoogle(
+  systemPrompt: string,
+  requirements: string,
+  apiKey: string,
+  model: string
+): Promise<string> {
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
@@ -67,7 +75,7 @@ async function callGoogle(requirements: string, apiKey: string, model: string): 
       },
       body: JSON.stringify({
         systemInstruction: {
-          parts: [{ text: SYSTEM_PROMPT }],
+          parts: [{ text: systemPrompt }],
         },
         contents: [
           {
@@ -93,7 +101,6 @@ async function callGoogle(requirements: string, apiKey: string, model: string): 
 }
 
 function parseAIResponse(raw: string): AITaskResponse {
-  // Try to extract JSON from the response (handle markdown code fences)
   let jsonStr = raw.trim();
 
   const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -112,12 +119,13 @@ function parseAIResponse(raw: string): AITaskResponse {
 
 function buildEstimation(
   aiResponse: AITaskResponse,
-  contingencyPercent: number
+  settings: EstimationSettings
 ): EstimationBreakdown {
   const tasks: EstimationTask[] = aiResponse.tasks.map((task) => {
     const adjustedHours = calculateAdjustedHours(
       task.baseHours,
-      task.complexity as EstimationTask["complexity"]
+      task.complexity as EstimationTask["complexity"],
+      settings
     );
 
     return {
@@ -135,7 +143,7 @@ function buildEstimation(
 
   const breakdown = calculateBreakdown(
     tasks.map((t) => ({ baseHours: t.baseHours, complexity: t.complexity })),
-    contingencyPercent
+    settings
   );
 
   return {
@@ -154,14 +162,14 @@ export async function POST(request: NextRequest) {
       requirements,
       provider = "anthropic",
       model = "",
-      contingencyPercent = 15,
       apiKey,
+      settings,
     } = body as {
       requirements: string;
       provider: AIProvider;
       model: string;
-      contingencyPercent: number;
       apiKey: string;
+      settings: EstimationSettings;
     };
 
     if (!requirements?.trim()) {
@@ -185,16 +193,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const systemPrompt = buildSystemPrompt(settings);
     let rawAnalysis: string;
 
     if (provider === "google") {
-      rawAnalysis = await callGoogle(requirements, apiKey, model);
+      rawAnalysis = await callGoogle(systemPrompt, requirements, apiKey, model);
     } else {
-      rawAnalysis = await callAnthropic(requirements, apiKey, model);
+      rawAnalysis = await callAnthropic(systemPrompt, requirements, apiKey, model);
     }
 
     const aiResponse = parseAIResponse(rawAnalysis);
-    const breakdown = buildEstimation(aiResponse, contingencyPercent);
+    const breakdown = buildEstimation(aiResponse, settings);
 
     const response: QuoteResponse = {
       breakdown,
