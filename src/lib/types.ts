@@ -117,7 +117,7 @@ export const DEFAULT_SETTINGS: EstimationSettings = {
   hourlyRate: 0,
   complexitySimple: 1.0,
   complexityMedium: 1.3,
-  complexityComplex: 1.8,
+  complexityComplex: 1.6,
   complexityVeryComplex: 2.5,
   globalMultiplier: 1.0,
 };
