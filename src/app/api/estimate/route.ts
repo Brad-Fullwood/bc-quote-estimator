@@ -27,7 +27,7 @@ interface AITaskResponse {
   risks: string[];
 }
 
-async function callAnthropic(requirements: string, apiKey: string): Promise<string> {
+async function callAnthropic(requirements: string, apiKey: string, model: string): Promise<string> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -36,7 +36,7 @@ async function callAnthropic(requirements: string, apiKey: string): Promise<stri
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-5-20250929",
+      model,
       max_tokens: 8192,
       system: SYSTEM_PROMPT,
       messages: [
@@ -57,9 +57,9 @@ async function callAnthropic(requirements: string, apiKey: string): Promise<stri
   return data.content[0].text;
 }
 
-async function callGoogle(requirements: string, apiKey: string): Promise<string> {
+async function callGoogle(requirements: string, apiKey: string, model: string): Promise<string> {
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: {
@@ -153,11 +153,13 @@ export async function POST(request: NextRequest) {
     const {
       requirements,
       provider = "anthropic",
+      model = "",
       contingencyPercent = 15,
       apiKey,
     } = body as {
       requirements: string;
       provider: AIProvider;
+      model: string;
       contingencyPercent: number;
       apiKey: string;
     };
@@ -176,12 +178,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!model?.trim()) {
+      return NextResponse.json(
+        { error: "Please select a model" },
+        { status: 400 }
+      );
+    }
+
     let rawAnalysis: string;
 
     if (provider === "google") {
-      rawAnalysis = await callGoogle(requirements, apiKey);
+      rawAnalysis = await callGoogle(requirements, apiKey, model);
     } else {
-      rawAnalysis = await callAnthropic(requirements, apiKey);
+      rawAnalysis = await callAnthropic(requirements, apiKey, model);
     }
 
     const aiResponse = parseAIResponse(rawAnalysis);

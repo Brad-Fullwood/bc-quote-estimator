@@ -13,6 +13,7 @@ import type { AIProvider, QuoteResponse } from "@/lib/types";
 export default function Home() {
   const [provider, setProvider] = useState<AIProvider>("anthropic");
   const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState("");
   const [requirements, setRequirements] = useState("");
   const [hourlyRate, setHourlyRate] = useState(0);
   const [contingencyPercent, setContingencyPercent] = useState(15);
@@ -44,6 +45,7 @@ export default function Home() {
         body: JSON.stringify({
           requirements,
           provider,
+          model,
           contingencyPercent,
           apiKey,
         }),
@@ -142,6 +144,8 @@ export default function Home() {
                 onProviderChange={setProvider}
                 apiKey={apiKey}
                 onApiKeyChange={handleApiKeyChange}
+                model={model}
+                onModelChange={setModel}
               />
               <SettingsPanel
                 hourlyRate={hourlyRate}

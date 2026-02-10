@@ -1,5 +1,10 @@
 export type AIProvider = "anthropic" | "google";
 
+export interface AIModel {
+  id: string;
+  name: string;
+}
+
 export type TaskCategory =
   | "table"
   | "table-extension"
