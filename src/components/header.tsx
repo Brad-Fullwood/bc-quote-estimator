@@ -1,6 +1,6 @@
 "use client";
 
-import { Calculator } from "lucide-react";
+import { Calculator, Github } from "lucide-react";
 
 export function Header() {
   return (
@@ -19,14 +19,25 @@ export function Header() {
             </p>
           </div>
         </div>
-        <a
-          href="https://technicallybusinesscentral.co.uk"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          technicallybusinesscentral.co.uk
-        </a>
+        <div className="flex items-center gap-4">
+          <a
+            href="https://github.com/Brad-Fullwood/bc-quote-estimator"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-foreground transition-colors"
+            title="View on GitHub"
+          >
+            <Github className="w-5 h-5" />
+          </a>
+          <a
+            href="https://technicallybusinesscentral.co.uk"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
+          >
+            technicallybusinesscentral.co.uk
+          </a>
+        </div>
       </div>
     </header>
   );
