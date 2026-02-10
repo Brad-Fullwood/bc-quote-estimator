@@ -19,7 +19,17 @@ export function RequirementsInput({ value, onChange }: RequirementsInputProps) {
       const file = acceptedFiles[0];
       if (!file) return;
 
-      if (file.type === "application/pdf") {
+      const isPdf = file.type === "application/pdf";
+      const isDocx =
+        file.type ===
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+        file.name.endsWith(".docx");
+      const isText =
+        file.type === "text/plain" ||
+        file.name.endsWith(".txt") ||
+        file.name.endsWith(".md");
+
+      if (isPdf || isDocx) {
         setIsParsing(true);
         try {
           const formData = new FormData();
@@ -32,27 +42,28 @@ export function RequirementsInput({ value, onChange }: RequirementsInputProps) {
 
           if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.error || "Failed to parse PDF");
+            throw new Error(error.error || "Failed to parse document");
           }
 
           const data = await response.json();
           onChange(data.text);
           setFileName(file.name);
-          toast.success(`Parsed ${data.pages} page(s) from ${file.name}`);
+          const pageInfo = data.pages ? ` (${data.pages} pages)` : "";
+          toast.success(`Parsed ${file.name}${pageInfo}`);
         } catch (error) {
           toast.error(
-            error instanceof Error ? error.message : "Failed to parse PDF"
+            error instanceof Error ? error.message : "Failed to parse document"
           );
         } finally {
           setIsParsing(false);
         }
-      } else if (file.type === "text/plain" || file.name.endsWith(".txt") || file.name.endsWith(".md")) {
+      } else if (isText) {
         const text = await file.text();
         onChange(text);
         setFileName(file.name);
         toast.success(`Loaded ${file.name}`);
       } else {
-        toast.error("Please upload a PDF or text file");
+        toast.error("Please upload a PDF, DOCX, or text file");
       }
     },
     [onChange]
@@ -62,6 +73,8 @@ export function RequirementsInput({ value, onChange }: RequirementsInputProps) {
     onDrop,
     accept: {
       "application/pdf": [".pdf"],
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        [".docx"],
       "text/plain": [".txt", ".md"],
     },
     maxFiles: 1,
@@ -102,7 +115,7 @@ export function RequirementsInput({ value, onChange }: RequirementsInputProps) {
         {isParsing ? (
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" />
-            Parsing PDF...
+            Parsing document...
           </div>
         ) : (
           <div className="flex flex-col items-center gap-1">
@@ -110,7 +123,7 @@ export function RequirementsInput({ value, onChange }: RequirementsInputProps) {
             <p className="text-sm text-muted-foreground">
               {isDragActive
                 ? "Drop your file here"
-                : "Drop a PDF or text file, or click to browse"}
+                : "Drop a PDF, DOCX, or text file, or click to browse"}
             </p>
           </div>
         )}
