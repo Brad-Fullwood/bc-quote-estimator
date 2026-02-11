@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Clock, ChevronRight, Loader2, AlertTriangle } from "lucide-react";
-import { getSessionId } from "@/lib/session";
+import { Clock, ChevronRight, Trash2 } from "lucide-react";
+import { getQuoteHistory, deleteQuote } from "@/lib/quote-history";
 import type { SavedQuoteListItem } from "@/lib/types";
 
 function ConfidenceDot({ confidence }: { confidence: string }) {
@@ -36,50 +36,15 @@ interface QuoteHistoryProps {
 
 export function QuoteHistory({ onSelectQuote }: QuoteHistoryProps) {
   const [quotes, setQuotes] = useState<SavedQuoteListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchQuotes() {
-      const sessionId = getSessionId();
-      if (!sessionId) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const response = await fetch(
-          `/api/quotes?sessionId=${encodeURIComponent(sessionId)}`
-        );
-        if (!response.ok) throw new Error("Failed to load quotes");
-        const data = await response.json();
-        setQuotes(data);
-      } catch {
-        setError("Failed to load quote history");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchQuotes();
+    setQuotes(getQuoteHistory());
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground">
-        <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        Loading history...
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center py-12 text-danger">
-        <AlertTriangle className="w-5 h-5 mr-2" />
-        {error}
-      </div>
-    );
+  function handleDelete(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
+    deleteQuote(id);
+    setQuotes(getQuoteHistory());
   }
 
   if (quotes.length === 0) {
@@ -118,6 +83,14 @@ export function QuoteHistory({ onSelectQuote }: QuoteHistoryProps) {
               ~{quote.totalDays} days
             </p>
           </div>
+
+          <button
+            onClick={(e) => handleDelete(e, quote.id)}
+            className="p-1.5 rounded-md hover:bg-danger/10 text-muted-foreground hover:text-danger transition-colors shrink-0"
+            title="Delete quote"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
 
           <ChevronRight className="w-4 h-4 text-muted shrink-0" />
         </button>

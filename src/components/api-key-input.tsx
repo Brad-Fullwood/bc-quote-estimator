@@ -49,10 +49,16 @@ export function ApiKeyInput({
         const data = await response.json();
         setModels(data.models);
 
-        // Auto-select first model if none selected or current selection invalid
+        // Auto-select first model only if current selection is not in the list
         const ids = (data.models as AIModel[]).map((m) => m.id);
         if (ids.length > 0 && !ids.includes(model)) {
-          onModelChange(ids[0]);
+          // Check for a previously saved model before falling back to first
+          const saved = localStorage.getItem("bc-quote-model");
+          if (saved && ids.includes(saved)) {
+            onModelChange(saved);
+          } else {
+            onModelChange(ids[0]);
+          }
         }
       } catch (error) {
         toast.error(

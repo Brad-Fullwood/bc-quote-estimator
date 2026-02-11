@@ -1,112 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { QuoteHistory } from "@/components/quote-history";
 import { EstimationResults } from "@/components/estimation-results";
 import type { QuoteResponse, EstimationSettings } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
-
-interface QuoteDetail {
-  quote: {
-    id: string;
-    settingsSnapshot: EstimationSettings;
-    provider: string;
-    createdAt: string;
-  };
-  tasks: Array<{
-    id: string;
-    taskIndex: number;
-    title: string;
-    category: string;
-    complexity: string;
-    baseHours: number;
-    adjustedHours: number;
-    rating: string | null;
-    actualHours: number | null;
-  }>;
-}
+import { getQuoteById } from "@/lib/quote-history";
 
 export default function HistoryPage() {
-  const [selectedQuote, setSelectedQuote] = useState<QuoteDetail | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  async function handleSelectQuote(quoteId: string) {
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/quotes/${quoteId}`);
-      if (!response.ok) throw new Error("Failed to load quote");
-      const data: QuoteDetail = await response.json();
-      setSelectedQuote(data);
-    } catch {
-      setSelectedQuote(null);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function buildQuoteResponse(detail: QuoteDetail): {
+  const [selectedQuote, setSelectedQuote] = useState<{
     result: QuoteResponse;
     settings: EstimationSettings;
+    quoteId: string;
     taskIds: string[];
-  } {
-    const settings = {
-      ...DEFAULT_SETTINGS,
-      ...(detail.quote.settingsSnapshot as EstimationSettings),
-    };
+  } | null>(null);
 
-    const tasks = detail.tasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      description: "",
-      category: t.category as QuoteResponse["breakdown"]["tasks"][0]["category"],
-      complexity: t.complexity as QuoteResponse["breakdown"]["tasks"][0]["complexity"],
-      baseHours: t.baseHours,
-      adjustedHours: t.adjustedHours,
-      dependencies: [] as string[],
-      notes: "",
-    }));
+  function handleSelectQuote(quoteId: string) {
+    const quote = getQuoteById(quoteId);
+    if (!quote) return;
 
-    const subtotalHours = tasks.reduce((sum, t) => sum + t.adjustedHours, 0);
-    const codeReviewHours =
-      Math.round(subtotalHours * (settings.codeReviewPercent / 100) * 10) / 10;
-    const testingHours =
-      Math.round(subtotalHours * (settings.testingPercent / 100) * 10) / 10;
-    const projectManagementHours =
-      Math.round(subtotalHours * (settings.projectManagementPercent / 100) * 10) / 10;
-    const beforeContingency =
-      subtotalHours + codeReviewHours + testingHours + projectManagementHours;
-    const contingencyHours =
-      Math.round(beforeContingency * (settings.contingencyPercent / 100) * 10) / 10;
-    const totalHours =
-      Math.round((beforeContingency + contingencyHours) * 10) / 10;
-    const totalDays =
-      Math.round((totalHours / settings.hoursPerDay) * 10) / 10;
-
-    return {
-      result: {
-        breakdown: {
-          tasks,
-          subtotalHours: Math.round(subtotalHours * 10) / 10,
-          codeReviewHours,
-          testingHours,
-          projectManagementHours,
-          contingencyHours,
-          totalHours,
-          totalDays,
-          confidence: "medium",
-          assumptions: [],
-          risks: [],
-        },
-        rawAnalysis: "",
-        provider: detail.quote.provider as QuoteResponse["provider"],
-        createdAt: detail.quote.createdAt,
-      },
-      settings,
-      taskIds: detail.tasks.map((t) => t.id),
-    };
+    setSelectedQuote({
+      result: quote.result,
+      settings: { ...DEFAULT_SETTINGS, ...quote.settings },
+      quoteId: quote.id,
+      taskIds: quote.result.breakdown.tasks.map((t) => t.id),
+    });
   }
 
   return (
@@ -138,21 +59,16 @@ export default function HistoryPage() {
           {selectedQuote ? "Quote Detail" : "Quote History"}
         </h2>
 
-        {loading && (
-          <div className="flex items-center justify-center py-12 text-muted-foreground">
-            <Loader2 className="w-5 h-5 animate-spin mr-2" />
-            Loading quote...
-          </div>
-        )}
-
-        {!loading && !selectedQuote && (
+        {!selectedQuote && (
           <QuoteHistory onSelectQuote={handleSelectQuote} />
         )}
 
-        {!loading && selectedQuote && (
+        {selectedQuote && (
           <EstimationResults
-            {...buildQuoteResponse(selectedQuote)}
-            quoteId={selectedQuote.quote.id}
+            result={selectedQuote.result}
+            settings={selectedQuote.settings}
+            quoteId={selectedQuote.quoteId}
+            taskIds={selectedQuote.taskIds}
           />
         )}
       </main>

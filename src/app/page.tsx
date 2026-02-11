@@ -11,8 +11,11 @@ import { EstimationResults } from "@/components/estimation-results";
 import type { AIProvider, EstimationSettings, QuoteResponse } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import { getSessionId } from "@/lib/session";
+import { saveQuoteToHistory } from "@/lib/quote-history";
 
 const SETTINGS_KEY = "bc-quote-settings";
+const PROVIDER_KEY = "bc-quote-provider";
+const MODEL_KEY = "bc-quote-model";
 
 function loadSettings(): EstimationSettings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
@@ -30,9 +33,15 @@ function saveSettings(settings: EstimationSettings) {
 }
 
 export default function Home() {
-  const [provider, setProvider] = useState<AIProvider>("anthropic");
+  const [provider, setProvider] = useState<AIProvider>(() => {
+    if (typeof window === "undefined") return "anthropic";
+    return (localStorage.getItem(PROVIDER_KEY) as AIProvider) || "anthropic";
+  });
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("");
+  const [model, setModel] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem(MODEL_KEY) || "";
+  });
   const [requirements, setRequirements] = useState("");
   const [settings, setSettings] = useState<EstimationSettings>(DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -44,6 +53,16 @@ export default function Home() {
   // Load settings from localStorage on mount
   useEffect(() => {
     setSettings(loadSettings());
+  }, []);
+
+  const handleProviderChange = useCallback((p: AIProvider) => {
+    setProvider(p);
+    localStorage.setItem(PROVIDER_KEY, p);
+  }, []);
+
+  const handleModelChange = useCallback((m: string) => {
+    setModel(m);
+    localStorage.setItem(MODEL_KEY, m);
   }, []);
 
   const handleApiKeyChange = useCallback((key: string) => {
@@ -93,7 +112,12 @@ export default function Home() {
         `Estimate generated: ${data.breakdown.totalHours} hours across ${data.breakdown.tasks.length} tasks`
       );
 
-      // Fire-and-forget save to DB
+      // Save to local history
+      const savedLocal = saveQuoteToHistory(requirements, data, settings);
+      setQuoteId(savedLocal.quoteId);
+      setTaskIds(savedLocal.taskIds);
+
+      // Fire-and-forget save to DB for analytics
       const sessionId = getSessionId();
       fetch("/api/quotes", {
         method: "POST",
@@ -105,15 +129,9 @@ export default function Home() {
           model,
           settings,
         }),
-      })
-        .then((res) => res.json())
-        .then((saved: { quoteId: string; taskIds: string[] }) => {
-          setQuoteId(saved.quoteId);
-          setTaskIds(saved.taskIds);
-        })
-        .catch(() => {
-          // Silently fail — quote display still works without DB
-        });
+      }).catch(() => {
+        // Silently fail — local history still works without DB
+      });
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to generate estimate"
@@ -206,11 +224,11 @@ export default function Home() {
             <div className="space-y-6">
               <ApiKeyInput
                 provider={provider}
-                onProviderChange={setProvider}
+                onProviderChange={handleProviderChange}
                 apiKey={apiKey}
                 onApiKeyChange={handleApiKeyChange}
                 model={model}
-                onModelChange={setModel}
+                onModelChange={handleModelChange}
               />
             </div>
           </div>
