@@ -4,6 +4,12 @@ AI-powered project estimation tool for Business Central / AL development. Paste 
 
 Built with Next.js, Tailwind CSS, and the Vercel AI SDK. Supports Anthropic (Claude) and Google (Gemini) as AI providers.
 
+## Screenshots
+
+![Home page — requirements input with file upload and AI provider selection](screenshots/Home-Page.jpg)
+
+![Estimation results — task breakdown with hours summary, ratings, and report generation](screenshots/Quote-Page.jpg)
+
 ## Features
 
 - **AI-driven task breakdown** — Parses free-text requirements into specific BC development tasks (tables, pages, codeunits, reports, integrations, etc.)
