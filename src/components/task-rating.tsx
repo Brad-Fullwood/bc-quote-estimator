@@ -66,7 +66,9 @@ export function TaskRating({
   function handleThumbsDown(e: React.MouseEvent) {
     e.stopPropagation();
     if (rating === "down" && !showActualInput) return;
+    setRating("down");
     setShowActualInput(true);
+    onRated("down");
   }
 
   function handleSubmitActual(e: React.MouseEvent) {
