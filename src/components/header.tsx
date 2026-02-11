@@ -1,6 +1,6 @@
 "use client";
 
-import { Calculator, Github, Settings, History } from "lucide-react";
+import { Wrench, Github, Settings, History } from "lucide-react";
 import Link from "next/link";
 
 interface HeaderProps {
@@ -13,11 +13,11 @@ export function Header({ onSettingsClick }: HeaderProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="bg-primary/10 p-2 rounded-lg">
-            <Calculator className="w-5 h-5 text-primary" />
+            <Wrench className="w-5 h-5 text-primary" />
           </div>
           <div>
             <h1 className="text-lg font-semibold tracking-tight">
-              BC Quote Estimator
+              BC Project Tools
             </h1>
             <p className="text-xs text-muted-foreground hidden sm:block">
               Technically Business Central

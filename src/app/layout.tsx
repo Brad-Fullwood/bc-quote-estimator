@@ -3,13 +3,14 @@ import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "BC Quote Estimator | Technically Business Central",
+  title: "BC Project Tools | Technically Business Central",
   description:
-    "AI-powered development time estimation for Business Central projects. Break down requirements into actionable tasks with accurate hour estimates.",
+    "AI-powered project tools for Business Central — estimate development time and review specifications for quality before development starts.",
   keywords: [
     "Business Central",
     "BC Development",
     "Quote Estimator",
+    "Spec Review",
     "Project Estimation",
     "AL Development",
   ],

@@ -104,6 +104,29 @@ export interface EstimationSettings {
   globalMultiplier: number; // 0.5 - 2.0
 }
 
+// App mode
+export type AppMode = "estimate" | "review";
+
+// Spec review types
+export type FindingSeverity = "critical" | "warning" | "info";
+
+export type FindingCategory = "issue" | "missing" | "bc-specific" | "suggestion";
+
+export interface SpecFinding {
+  severity: FindingSeverity;
+  category: FindingCategory;
+  title: string;
+  description: string;
+}
+
+export interface SpecReviewResult {
+  qualityScore: number;
+  summary: string;
+  findings: SpecFinding[];
+  provider: AIProvider;
+  createdAt: string;
+}
+
 // Rating types
 export type TaskRating = "up" | "down";
 

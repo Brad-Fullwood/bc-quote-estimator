@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildSystemPrompt, buildUserPrompt } from "@/lib/ai-prompt";
+import { callAnthropic, callGoogle, parseJsonResponse } from "@/lib/ai-client";
 import { calculateAdjustedHours, calculateBreakdown } from "@/lib/estimation-rules";
 import type {
   AIProvider,
@@ -23,98 +24,6 @@ interface AITaskResponse {
   confidence: string;
   assumptions: string[];
   risks: string[];
-}
-
-async function callAnthropic(
-  systemPrompt: string,
-  requirements: string,
-  apiKey: string,
-  model: string
-): Promise<string> {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 8192,
-      system: systemPrompt,
-      messages: [
-        {
-          role: "user",
-          content: buildUserPrompt(requirements),
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Anthropic API error: ${response.status} - ${error}`);
-  }
-
-  const data = await response.json();
-  return data.content[0].text;
-}
-
-async function callGoogle(
-  systemPrompt: string,
-  requirements: string,
-  apiKey: string,
-  model: string
-): Promise<string> {
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: systemPrompt }],
-        },
-        contents: [
-          {
-            parts: [{ text: buildUserPrompt(requirements) }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 8192,
-          responseMimeType: "application/json",
-        },
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Google AI API error: ${response.status} - ${error}`);
-  }
-
-  const data = await response.json();
-  return data.candidates[0].content.parts[0].text;
-}
-
-function parseAIResponse(raw: string): AITaskResponse {
-  let jsonStr = raw.trim();
-
-  const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) {
-    jsonStr = fenceMatch[1].trim();
-  }
-
-  const parsed = JSON.parse(jsonStr);
-
-  if (!parsed.tasks || !Array.isArray(parsed.tasks)) {
-    throw new Error("Invalid AI response: missing tasks array");
-  }
-
-  return parsed as AITaskResponse;
 }
 
 function buildEstimation(
@@ -194,15 +103,21 @@ export async function POST(request: NextRequest) {
     }
 
     const systemPrompt = buildSystemPrompt(settings);
+    const userMessage = buildUserPrompt(requirements);
     let rawAnalysis: string;
 
     if (provider === "google") {
-      rawAnalysis = await callGoogle(systemPrompt, requirements, apiKey, model);
+      rawAnalysis = await callGoogle(systemPrompt, userMessage, apiKey, model);
     } else {
-      rawAnalysis = await callAnthropic(systemPrompt, requirements, apiKey, model);
+      rawAnalysis = await callAnthropic(systemPrompt, userMessage, apiKey, model);
     }
 
-    const aiResponse = parseAIResponse(rawAnalysis);
+    const aiResponse = parseJsonResponse<AITaskResponse>(rawAnalysis);
+
+    if (!aiResponse.tasks || !Array.isArray(aiResponse.tasks)) {
+      throw new Error("Invalid AI response: missing tasks array");
+    }
+
     const breakdown = buildEstimation(aiResponse, settings);
 
     const response: QuoteResponse = {

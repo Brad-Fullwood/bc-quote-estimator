@@ -1,14 +1,21 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Loader2, Sparkles, RotateCcw } from "lucide-react";
+import { Loader2, Sparkles, RotateCcw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/header";
 import { ApiKeyInput } from "@/components/api-key-input";
 import { RequirementsInput } from "@/components/requirements-input";
 import { SettingsModal } from "@/components/settings-modal";
 import { EstimationResults } from "@/components/estimation-results";
-import type { AIProvider, EstimationSettings, QuoteResponse } from "@/lib/types";
+import { ReviewResults } from "@/components/review-results";
+import type {
+  AIProvider,
+  AppMode,
+  EstimationSettings,
+  QuoteResponse,
+  SpecReviewResult,
+} from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import { getSessionId } from "@/lib/session";
 import { saveQuoteToHistory } from "@/lib/quote-history";
@@ -32,7 +39,31 @@ function saveSettings(settings: EstimationSettings) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
+const MODE_CONFIG = {
+  estimate: {
+    headline: "Stop Under-Quoting BC Projects",
+    subtitle:
+      "Paste your requirements or upload a document. AI breaks them down into specific Business Central development tasks with realistic time estimates \u2014 tuned to your experience and preferences.",
+    actionLabel: "Generate Estimate",
+    loadingLabel: "Analysing requirements...",
+    resetLabel: "New Estimate",
+    resultHeading: "Your Estimate",
+    actionIcon: Sparkles,
+  },
+  review: {
+    headline: "Catch Issues Before Development Starts",
+    subtitle:
+      "Paste your specification and let AI review it for ambiguities, gaps, missing BC-specific concerns, and improvement opportunities \u2014 before it reaches development.",
+    actionLabel: "Review Specification",
+    loadingLabel: "Reviewing specification...",
+    resetLabel: "New Review",
+    resultHeading: "Specification Review",
+    actionIcon: Search,
+  },
+} as const;
+
 export default function Home() {
+  const [mode, setMode] = useState<AppMode>("estimate");
   const [provider, setProvider] = useState<AIProvider>(() => {
     if (typeof window === "undefined") return "anthropic";
     return (localStorage.getItem(PROVIDER_KEY) as AIProvider) || "anthropic";
@@ -46,7 +77,8 @@ export default function Home() {
   const [settings, setSettings] = useState<EstimationSettings>(DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState<QuoteResponse | null>(null);
+  const [estimateResult, setEstimateResult] = useState<QuoteResponse | null>(null);
+  const [reviewResult, setReviewResult] = useState<SpecReviewResult | null>(null);
   const [quoteId, setQuoteId] = useState<string | null>(null);
   const [taskIds, setTaskIds] = useState<string[]>([]);
 
@@ -74,6 +106,15 @@ export default function Home() {
     saveSettings(newSettings);
   }
 
+  function handleModeSwitch(newMode: AppMode) {
+    if (newMode === mode) return;
+    setMode(newMode);
+    setEstimateResult(null);
+    setReviewResult(null);
+    setQuoteId(null);
+    setTaskIds([]);
+  }
+
   async function handleEstimate() {
     if (!requirements.trim()) {
       toast.error("Please enter your requirements");
@@ -86,7 +127,7 @@ export default function Home() {
     }
 
     setIsLoading(true);
-    setResult(null);
+    setEstimateResult(null);
 
     try {
       const response = await fetch("/api/estimate", {
@@ -107,7 +148,7 @@ export default function Home() {
       }
 
       const data: QuoteResponse = await response.json();
-      setResult(data);
+      setEstimateResult(data);
       toast.success(
         `Estimate generated: ${data.breakdown.totalHours} hours across ${data.breakdown.tasks.length} tasks`
       );
@@ -141,11 +182,84 @@ export default function Home() {
     }
   }
 
+  async function handleReview() {
+    if (!requirements.trim()) {
+      toast.error("Please enter your specification");
+      return;
+    }
+
+    if (!apiKey.trim()) {
+      toast.error("Please enter your API key");
+      return;
+    }
+
+    setIsLoading(true);
+    setReviewResult(null);
+
+    try {
+      const response = await fetch("/api/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requirements,
+          provider,
+          model,
+          apiKey,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to review specification");
+      }
+
+      const data: SpecReviewResult = await response.json();
+      setReviewResult(data);
+
+      const criticalCount = data.findings.filter(
+        (f) => f.severity === "critical"
+      ).length;
+      if (criticalCount > 0) {
+        toast.warning(
+          `Review complete: ${criticalCount} critical finding${criticalCount > 1 ? "s" : ""} identified`
+        );
+      } else {
+        toast.success(
+          `Review complete: Score ${data.qualityScore}/10 with ${data.findings.length} findings`
+        );
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to review specification"
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function handleAction() {
+    if (mode === "estimate") {
+      handleEstimate();
+    } else {
+      handleReview();
+    }
+  }
+
   function handleReset() {
-    setResult(null);
+    setEstimateResult(null);
+    setReviewResult(null);
     setQuoteId(null);
     setTaskIds([]);
   }
+
+  const hasResult =
+    (mode === "estimate" && estimateResult) ||
+    (mode === "review" && reviewResult);
+
+  const config = MODE_CONFIG[mode];
+  const ActionIcon = config.actionIcon;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -161,34 +275,63 @@ export default function Home() {
         {/* Hero */}
         <div className="text-center mb-10">
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3">
-            Stop Under-Quoting BC Projects
+            {config.headline}
           </h2>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            Paste your requirements or upload a document. AI breaks them down into
-            specific Business Central development tasks with realistic time
-            estimates &mdash; tuned to your experience and preferences.
+            {config.subtitle}
           </p>
         </div>
 
-        {result ? (
+        {/* Mode Switcher */}
+        <div className="flex justify-center mb-8">
+          <div className="inline-flex rounded-lg bg-surface border border-border p-1">
+            <button
+              onClick={() => handleModeSwitch("estimate")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                mode === "estimate"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Estimate
+            </button>
+            <button
+              onClick={() => handleModeSwitch("review")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                mode === "review"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Review Spec
+            </button>
+          </div>
+        </div>
+
+        {hasResult ? (
           /* Results View */
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Your Estimate</h2>
+              <h2 className="text-lg font-semibold">{config.resultHeading}</h2>
               <button
                 onClick={handleReset}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface border border-border hover:bg-surface-hover text-sm transition-colors"
               >
                 <RotateCcw className="w-4 h-4" />
-                New Estimate
+                {config.resetLabel}
               </button>
             </div>
-            <EstimationResults
-              result={result}
-              settings={settings}
-              quoteId={quoteId}
-              taskIds={taskIds}
-            />
+            {mode === "estimate" && estimateResult && (
+              <EstimationResults
+                result={estimateResult}
+                settings={settings}
+                quoteId={quoteId}
+                taskIds={taskIds}
+              />
+            )}
+            {mode === "review" && reviewResult && (
+              <ReviewResults result={reviewResult} />
+            )}
           </div>
         ) : (
           /* Input View */
@@ -200,21 +343,21 @@ export default function Home() {
                 onChange={setRequirements}
               />
 
-              {/* Generate Button */}
+              {/* Action Button */}
               <button
-                onClick={handleEstimate}
+                onClick={handleAction}
                 disabled={isLoading || !requirements.trim() || !apiKey.trim()}
                 className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium py-3.5 px-6 rounded-xl transition-all shadow-lg shadow-primary/20 hover:shadow-primary/30"
               >
                 {isLoading ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    Analysing requirements...
+                    {config.loadingLabel}
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-5 h-5" />
-                    Generate Estimate
+                    <ActionIcon className="w-5 h-5" />
+                    {config.actionLabel}
                   </>
                 )}
               </button>
@@ -240,7 +383,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted">
           <p>&copy; {new Date().getFullYear()} Technically Business Central</p>
           <p>
-            Estimates are AI-generated and should be reviewed by an experienced
+            Results are AI-generated and should be reviewed by an experienced
             BC developer.
           </p>
         </div>
