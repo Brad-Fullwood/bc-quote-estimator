@@ -1,6 +1,7 @@
 "use client";
 
-import { Calculator, Github, Settings } from "lucide-react";
+import { Calculator, Github, Settings, History } from "lucide-react";
+import Link from "next/link";
 
 interface HeaderProps {
   onSettingsClick: () => void;
@@ -24,6 +25,13 @@ export function Header({ onSettingsClick }: HeaderProps) {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            href="/history"
+            className="p-2 rounded-lg hover:bg-surface-hover text-muted-foreground hover:text-foreground transition-colors"
+            title="Quote History"
+          >
+            <History className="w-5 h-5" />
+          </Link>
           <button
             onClick={onSettingsClick}
             className="p-2 rounded-lg hover:bg-surface-hover text-muted-foreground hover:text-foreground transition-colors"

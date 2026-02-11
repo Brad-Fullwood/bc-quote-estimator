@@ -10,6 +10,7 @@ import { SettingsModal } from "@/components/settings-modal";
 import { EstimationResults } from "@/components/estimation-results";
 import type { AIProvider, EstimationSettings, QuoteResponse } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
+import { getSessionId } from "@/lib/session";
 
 const SETTINGS_KEY = "bc-quote-settings";
 
@@ -37,6 +38,8 @@ export default function Home() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<QuoteResponse | null>(null);
+  const [quoteId, setQuoteId] = useState<string | null>(null);
+  const [taskIds, setTaskIds] = useState<string[]>([]);
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -89,6 +92,28 @@ export default function Home() {
       toast.success(
         `Estimate generated: ${data.breakdown.totalHours} hours across ${data.breakdown.tasks.length} tasks`
       );
+
+      // Fire-and-forget save to DB
+      const sessionId = getSessionId();
+      fetch("/api/quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          requirements,
+          result: data,
+          model,
+          settings,
+        }),
+      })
+        .then((res) => res.json())
+        .then((saved: { quoteId: string; taskIds: string[] }) => {
+          setQuoteId(saved.quoteId);
+          setTaskIds(saved.taskIds);
+        })
+        .catch(() => {
+          // Silently fail — quote display still works without DB
+        });
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to generate estimate"
@@ -100,6 +125,8 @@ export default function Home() {
 
   function handleReset() {
     setResult(null);
+    setQuoteId(null);
+    setTaskIds([]);
   }
 
   return (
@@ -138,7 +165,12 @@ export default function Home() {
                 New Estimate
               </button>
             </div>
-            <EstimationResults result={result} settings={settings} />
+            <EstimationResults
+              result={result}
+              settings={settings}
+              quoteId={quoteId}
+              taskIds={taskIds}
+            />
           </div>
         ) : (
           /* Input View */

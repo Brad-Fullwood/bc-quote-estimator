@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   Clock,
   AlertTriangle,
@@ -11,18 +11,29 @@ import {
   Download,
   Lightbulb,
   Shield,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { QuoteResponse, EstimationTask, EstimationSettings } from "@/lib/types";
+import type {
+  QuoteResponse,
+  EstimationTask,
+  EstimationSettings,
+  TaskRating as TaskRatingType,
+} from "@/lib/types";
 import {
   CATEGORY_LABELS,
   CATEGORY_COLORS,
   getComplexityMultipliers,
 } from "@/lib/estimation-rules";
+import { TaskRating } from "./task-rating";
+import { QuoteRating } from "./quote-rating";
+import { getSessionId } from "@/lib/session";
 
 interface EstimationResultsProps {
   result: QuoteResponse;
   settings: EstimationSettings;
+  quoteId?: string | null;
+  taskIds?: string[];
 }
 
 function ConfidenceBadge({ confidence }: { confidence: string }) {
@@ -68,10 +79,16 @@ function TaskRow({
   task,
   index,
   multipliers,
+  quoteId,
+  dbTaskId,
+  onRated,
 }: {
   task: EstimationTask;
   index: number;
   multipliers: Record<string, number>;
+  quoteId?: string | null;
+  dbTaskId?: string;
+  onRated: (index: number, rating: TaskRatingType, actualHours?: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -96,6 +113,18 @@ function TaskRow({
             {multipliers[task.complexity]}x)
           </p>
         </div>
+
+        {quoteId && dbTaskId && (
+          <TaskRating
+            quoteId={quoteId}
+            taskId={dbTaskId}
+            adjustedHours={task.adjustedHours}
+            onRated={(rating, actualHours) =>
+              onRated(index, rating, actualHours)
+            }
+          />
+        )}
+
         <div className="text-right shrink-0">
           <p className="text-sm font-semibold">{task.adjustedHours}h</p>
           <p className="text-xs text-muted">base: {task.baseHours}h</p>
@@ -128,19 +157,80 @@ function TaskRow({
   );
 }
 
+function RatingProgress({
+  rated,
+  total,
+}: {
+  rated: number;
+  total: number;
+}) {
+  const percent = total > 0 ? Math.round((rated / total) * 100) : 0;
+  const threshold = Math.ceil(total * 0.5);
+  const remaining = Math.max(0, threshold - rated);
+  const meetsThreshold = rated >= threshold;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">
+          {rated}/{total} tasks rated ({percent}%)
+        </span>
+        {!meetsThreshold && remaining > 0 && (
+          <span className="text-warning">
+            Rate {remaining} more to generate report
+          </span>
+        )}
+        {meetsThreshold && (
+          <span className="text-success">Report ready</span>
+        )}
+      </div>
+      <div className="h-1.5 bg-background rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-300 ${
+            meetsThreshold ? "bg-success" : "bg-warning"
+          }`}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function EstimationResults({
   result,
   settings,
+  quoteId,
+  taskIds,
 }: EstimationResultsProps) {
   const { breakdown } = result;
   const multipliers = getComplexityMultipliers(settings);
   const totalCost =
     settings.hourlyRate > 0 ? breakdown.totalHours * settings.hourlyRate : null;
 
+  const [ratedTasks, setRatedTasks] = useState<
+    Map<number, { rating: TaskRatingType; actualHours?: number }>
+  >(new Map());
+
+  const ratedCount = ratedTasks.size;
+  const totalTasks = breakdown.tasks.length;
+  const threshold = Math.ceil(totalTasks * 0.5);
+  const canGenerateReport = ratedCount >= threshold;
+
+  const handleTaskRated = useCallback(
+    (index: number, rating: TaskRatingType, actualHours?: number) => {
+      setRatedTasks((prev) => {
+        const next = new Map(prev);
+        next.set(index, { rating, actualHours });
+        return next;
+      });
+    },
+    []
+  );
+
   function generateTextSummary(): string {
     const lines: string[] = [
       "BC DEVELOPMENT ESTIMATE",
-      "=" .repeat(50),
+      "=".repeat(50),
       "",
       `Generated: ${new Date(result.createdAt).toLocaleDateString()}`,
       `AI Provider: ${result.provider === "anthropic" ? "Claude (Anthropic)" : "Gemini (Google)"}`,
@@ -151,8 +241,15 @@ export function EstimationResults({
     ];
 
     breakdown.tasks.forEach((task, i) => {
+      const taskRating = ratedTasks.get(i);
+      const ratingStr = taskRating
+        ? taskRating.rating === "up"
+          ? " [Accurate]"
+          : ` [Actual: ${taskRating.actualHours}h]`
+        : "";
+
       lines.push(
-        `${i + 1}. ${task.title}`,
+        `${i + 1}. ${task.title}${ratingStr}`,
         `   Category: ${CATEGORY_LABELS[task.category]}`,
         `   Complexity: ${task.complexity} (${multipliers[task.complexity]}x)`,
         `   Hours: ${task.adjustedHours}h (base: ${task.baseHours}h)`,
@@ -171,7 +268,7 @@ export function EstimationResults({
       `Project Mgmt:      ${breakdown.projectManagementHours}h`,
       `Contingency:       ${breakdown.contingencyHours}h`,
       "-".repeat(50),
-      `TOTAL:             ${breakdown.totalHours}h (~${breakdown.totalDays} days)`,
+      `TOTAL:             ${breakdown.totalHours}h (~${breakdown.totalDays} days)`
     );
 
     if (totalCost !== null) {
@@ -181,7 +278,11 @@ export function EstimationResults({
     }
 
     if (breakdown.assumptions.length > 0) {
-      lines.push("", "ASSUMPTIONS:", ...breakdown.assumptions.map((a) => `  - ${a}`));
+      lines.push(
+        "",
+        "ASSUMPTIONS:",
+        ...breakdown.assumptions.map((a) => `  - ${a}`)
+      );
     }
 
     if (breakdown.risks.length > 0) {
@@ -205,6 +306,20 @@ export function EstimationResults({
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Downloaded estimate");
+  }
+
+  function handleGenerateReport() {
+    if (!canGenerateReport) return;
+
+    const report = generateTextSummary();
+    const blob = new Blob([report], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bc-estimate-report-${new Date().toISOString().split("T")[0]}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Report downloaded with accuracy ratings");
   }
 
   return (
@@ -231,6 +346,25 @@ export function EstimationResults({
             >
               <Download className="w-4 h-4" />
             </button>
+            {quoteId && (
+              <button
+                onClick={handleGenerateReport}
+                disabled={!canGenerateReport}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  canGenerateReport
+                    ? "bg-primary hover:bg-primary-hover text-primary-foreground"
+                    : "bg-muted/20 text-muted-foreground cursor-not-allowed"
+                }`}
+                title={
+                  canGenerateReport
+                    ? "Generate accuracy report"
+                    : `Rate ${Math.max(0, threshold - ratedCount)} more tasks first`
+                }
+              >
+                <FileText className="w-4 h-4" />
+                Generate Report
+              </button>
+            )}
           </div>
         </div>
 
@@ -289,10 +423,15 @@ export function EstimationResults({
           </div>
         )}
 
-        {/* Tasks count */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Clock className="w-4 h-4" />
-          {breakdown.tasks.length} tasks identified
+        {/* Tasks count + rating progress */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Clock className="w-4 h-4" />
+            {breakdown.tasks.length} tasks identified
+          </div>
+          {quoteId && (
+            <RatingProgress rated={ratedCount} total={totalTasks} />
+          )}
         </div>
       </div>
 
@@ -301,10 +440,27 @@ export function EstimationResults({
         <h3 className="text-lg font-semibold mb-4">Task Breakdown</h3>
         <div className="space-y-2">
           {breakdown.tasks.map((task, index) => (
-            <TaskRow key={task.id} task={task} index={index} multipliers={multipliers} />
+            <TaskRow
+              key={task.id}
+              task={task}
+              index={index}
+              multipliers={multipliers}
+              quoteId={quoteId}
+              dbTaskId={taskIds?.[index]}
+              onRated={handleTaskRated}
+            />
           ))}
         </div>
       </div>
+
+      {/* Quote-level rating */}
+      {quoteId && (
+        <QuoteRating
+          quoteId={quoteId}
+          sessionId={getSessionId()}
+          totalHours={breakdown.totalHours}
+        />
+      )}
 
       {/* Assumptions & Risks */}
       {(breakdown.assumptions.length > 0 || breakdown.risks.length > 0) && (

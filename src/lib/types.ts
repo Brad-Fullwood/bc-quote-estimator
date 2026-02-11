@@ -104,6 +104,48 @@ export interface EstimationSettings {
   globalMultiplier: number; // 0.5 - 2.0
 }
 
+// Rating types
+export type TaskRating = "up" | "down";
+
+export interface TaskRatingState {
+  rating: TaskRating | null;
+  actualHours?: number;
+}
+
+export interface SavedQuoteListItem {
+  id: string;
+  title: string;
+  totalHours: number;
+  totalDays: number;
+  taskCount: number;
+  confidence: string;
+  provider: string;
+  createdAt: Date;
+}
+
+export interface SavedQuoteTask {
+  id: string;
+  quoteId: string;
+  taskIndex: number;
+  title: string;
+  category: string;
+  complexity: string;
+  baseHours: number;
+  adjustedHours: number;
+  multiplierUsed: number;
+  rating: string | null;
+  actualHours: number | null;
+  createdAt: Date;
+}
+
+export interface MultiplierSuggestion {
+  complexity: string;
+  currentMultiplier: number;
+  suggestedMultiplier: number;
+  correction: number;
+  dataPoints: number;
+}
+
 export const DEFAULT_SETTINGS: EstimationSettings = {
   estimationStyle: 2,
   developerExperience: 2,
