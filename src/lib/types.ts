@@ -161,6 +161,20 @@ export interface SavedQuoteTask {
   createdAt: Date;
 }
 
+export interface SavedReviewListItem {
+  id: string;
+  summary: string;
+  qualityScore: number;
+  findingCount: number;
+  criticalCount: number;
+  provider: string;
+  createdAt: Date;
+}
+
+export type HistoryItem =
+  | { type: "quote"; item: SavedQuoteListItem }
+  | { type: "review"; item: SavedReviewListItem };
+
 export interface MultiplierSuggestion {
   complexity: string;
   currentMultiplier: number;

@@ -18,7 +18,7 @@ import type {
 } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import { getSessionId } from "@/lib/session";
-import { saveQuoteToHistory } from "@/lib/quote-history";
+import { saveQuoteToHistory, saveReviewToHistory } from "@/lib/quote-history";
 
 const SETTINGS_KEY = "bc-quote-settings";
 const PROVIDER_KEY = "bc-quote-provider";
@@ -215,6 +215,7 @@ export default function Home() {
 
       const data: SpecReviewResult = await response.json();
       setReviewResult(data);
+      saveReviewToHistory(requirements, data);
 
       const criticalCount = data.findings.filter(
         (f) => f.severity === "critical"

@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Clock, ChevronRight, Trash2 } from "lucide-react";
-import { getQuoteHistory, deleteQuote } from "@/lib/quote-history";
-import type { SavedQuoteListItem } from "@/lib/types";
+import { getCombinedHistory, deleteQuote, deleteReview } from "@/lib/quote-history";
+import type { HistoryItem } from "@/lib/types";
 
 function ConfidenceDot({ confidence }: { confidence: string }) {
   const color =
@@ -14,6 +14,21 @@ function ConfidenceDot({ confidence }: { confidence: string }) {
         : "bg-danger";
 
   return <span className={`w-2 h-2 rounded-full ${color}`} />;
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  const color =
+    score >= 8
+      ? "text-success bg-success/10"
+      : score >= 5
+        ? "text-warning bg-warning/10"
+        : "text-danger bg-danger/10";
+
+  return (
+    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${color}`}>
+      {score}
+    </span>
+  );
 }
 
 function formatRelativeTime(date: Date): string {
@@ -31,28 +46,32 @@ function formatRelativeTime(date: Date): string {
 }
 
 interface QuoteHistoryProps {
-  onSelectQuote?: (quoteId: string) => void;
+  onSelectItem?: (id: string, type: "quote" | "review") => void;
 }
 
-export function QuoteHistory({ onSelectQuote }: QuoteHistoryProps) {
-  const [quotes, setQuotes] = useState<SavedQuoteListItem[]>([]);
+export function QuoteHistory({ onSelectItem }: QuoteHistoryProps) {
+  const [items, setItems] = useState<HistoryItem[]>([]);
 
   useEffect(() => {
-    setQuotes(getQuoteHistory());
+    setItems(getCombinedHistory());
   }, []);
 
-  function handleDelete(e: React.MouseEvent, id: string) {
+  function handleDelete(e: React.MouseEvent, id: string, type: "quote" | "review") {
     e.stopPropagation();
-    deleteQuote(id);
-    setQuotes(getQuoteHistory());
+    if (type === "quote") {
+      deleteQuote(id);
+    } else {
+      deleteReview(id);
+    }
+    setItems(getCombinedHistory());
   }
 
-  if (quotes.length === 0) {
+  if (items.length === 0) {
     return (
       <div className="text-center py-12">
         <Clock className="w-8 h-8 text-muted mx-auto mb-3" />
         <p className="text-muted-foreground text-sm">
-          No quotes yet. Generate your first estimate to see it here.
+          No history yet. Generate an estimate or review to see it here.
         </p>
       </div>
     );
@@ -60,41 +79,90 @@ export function QuoteHistory({ onSelectQuote }: QuoteHistoryProps) {
 
   return (
     <div className="space-y-2">
-      {quotes.map((quote) => (
-        <button
-          key={quote.id}
-          onClick={() => onSelectQuote?.(quote.id)}
-          className="w-full flex items-center gap-4 p-4 rounded-lg border border-border bg-surface hover:bg-surface-hover transition-colors text-left"
-        >
-          <ConfidenceDot confidence={quote.confidence} />
+      {items.map((entry) => {
+        if (entry.type === "quote") {
+          const quote = entry.item;
+          return (
+            <button
+              key={quote.id}
+              onClick={() => onSelectItem?.(quote.id, "quote")}
+              className="w-full flex items-center gap-4 p-4 rounded-lg border border-border bg-surface hover:bg-surface-hover transition-colors text-left"
+            >
+              <ConfidenceDot confidence={quote.confidence} />
 
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{quote.title}</p>
-            <p className="text-xs text-muted-foreground">
-              {quote.taskCount} tasks &middot;{" "}
-              {quote.provider === "anthropic" ? "Claude" : "Gemini"} &middot;{" "}
-              {formatRelativeTime(quote.createdAt)}
-            </p>
-          </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{quote.title}</p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="text-primary/70 font-medium">Estimate</span>
+                  {" \u00B7 "}
+                  {quote.taskCount} tasks &middot;{" "}
+                  {quote.provider === "anthropic" ? "Claude" : "Gemini"} &middot;{" "}
+                  {formatRelativeTime(quote.createdAt)}
+                </p>
+              </div>
 
-          <div className="text-right shrink-0">
-            <p className="text-sm font-semibold">{quote.totalHours}h</p>
-            <p className="text-xs text-muted-foreground">
-              ~{quote.totalDays} days
-            </p>
-          </div>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-semibold">{quote.totalHours}h</p>
+                <p className="text-xs text-muted-foreground">
+                  ~{quote.totalDays} days
+                </p>
+              </div>
 
+              <button
+                onClick={(e) => handleDelete(e, quote.id, "quote")}
+                className="p-1.5 rounded-md hover:bg-danger/10 text-muted-foreground hover:text-danger transition-colors shrink-0"
+                title="Delete quote"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+
+              <ChevronRight className="w-4 h-4 text-muted shrink-0" />
+            </button>
+          );
+        }
+
+        const review = entry.item;
+        return (
           <button
-            onClick={(e) => handleDelete(e, quote.id)}
-            className="p-1.5 rounded-md hover:bg-danger/10 text-muted-foreground hover:text-danger transition-colors shrink-0"
-            title="Delete quote"
+            key={review.id}
+            onClick={() => onSelectItem?.(review.id, "review")}
+            className="w-full flex items-center gap-4 p-4 rounded-lg border border-border bg-surface hover:bg-surface-hover transition-colors text-left"
           >
-            <Trash2 className="w-4 h-4" />
-          </button>
+            <ScoreBadge score={review.qualityScore} />
 
-          <ChevronRight className="w-4 h-4 text-muted shrink-0" />
-        </button>
-      ))}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{review.summary}</p>
+              <p className="text-xs text-muted-foreground">
+                <span className="text-primary/70 font-medium">Review</span>
+                {" \u00B7 "}
+                {review.findingCount} findings
+                {review.criticalCount > 0 && (
+                  <span className="text-danger">
+                    {" \u00B7 "}{review.criticalCount} critical
+                  </span>
+                )}
+                {" \u00B7 "}
+                {review.provider === "anthropic" ? "Claude" : "Gemini"} &middot;{" "}
+                {formatRelativeTime(review.createdAt)}
+              </p>
+            </div>
+
+            <div className="text-right shrink-0">
+              <p className="text-sm font-semibold">{review.qualityScore}/10</p>
+            </div>
+
+            <button
+              onClick={(e) => handleDelete(e, review.id, "review")}
+              className="p-1.5 rounded-md hover:bg-danger/10 text-muted-foreground hover:text-danger transition-colors shrink-0"
+              title="Delete review"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+
+            <ChevronRight className="w-4 h-4 text-muted shrink-0" />
+          </button>
+        );
+      })}
     </div>
   );
 }

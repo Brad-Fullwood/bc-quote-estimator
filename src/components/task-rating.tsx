@@ -60,6 +60,8 @@ export function TaskRating({
   function handleThumbsUp(e: React.MouseEvent) {
     e.stopPropagation();
     if (rating === "up") return;
+    setRating("up");
+    onRated("up");
     submitRating("up");
   }
 

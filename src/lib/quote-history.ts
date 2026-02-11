@@ -1,7 +1,17 @@
-import type { QuoteResponse, EstimationSettings, SavedQuoteListItem } from "./types";
+import type {
+  QuoteResponse,
+  EstimationSettings,
+  SavedQuoteListItem,
+  SpecReviewResult,
+  SavedReviewListItem,
+  HistoryItem,
+} from "./types";
 
 const HISTORY_KEY = "bc-quote-history";
-const MAX_QUOTES = 50;
+const REVIEW_HISTORY_KEY = "bc-review-history";
+const MAX_ITEMS = 50;
+
+// --- Quote history ---
 
 export interface LocalQuote {
   id: string;
@@ -11,7 +21,7 @@ export interface LocalQuote {
   createdAt: string;
 }
 
-function loadHistory(): LocalQuote[] {
+function loadQuoteHistory(): LocalQuote[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(HISTORY_KEY);
@@ -22,7 +32,7 @@ function loadHistory(): LocalQuote[] {
   }
 }
 
-function persistHistory(quotes: LocalQuote[]) {
+function persistQuoteHistory(quotes: LocalQuote[]) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(quotes));
 }
 
@@ -48,20 +58,19 @@ export function saveQuoteToHistory(
     createdAt: new Date().toISOString(),
   };
 
-  const history = loadHistory();
+  const history = loadQuoteHistory();
   history.unshift(entry);
 
-  // Cap storage size
-  if (history.length > MAX_QUOTES) {
-    history.length = MAX_QUOTES;
+  if (history.length > MAX_ITEMS) {
+    history.length = MAX_ITEMS;
   }
 
-  persistHistory(history);
+  persistQuoteHistory(history);
   return { quoteId, taskIds };
 }
 
 export function getQuoteHistory(): SavedQuoteListItem[] {
-  return loadHistory().map((q) => ({
+  return loadQuoteHistory().map((q) => ({
     id: q.id,
     title: q.result.breakdown.tasks[0]?.title ?? "Untitled Quote",
     totalHours: q.result.breakdown.totalHours,
@@ -74,10 +83,97 @@ export function getQuoteHistory(): SavedQuoteListItem[] {
 }
 
 export function getQuoteById(id: string): LocalQuote | undefined {
-  return loadHistory().find((q) => q.id === id);
+  return loadQuoteHistory().find((q) => q.id === id);
 }
 
 export function deleteQuote(id: string) {
-  const history = loadHistory().filter((q) => q.id !== id);
-  persistHistory(history);
+  const history = loadQuoteHistory().filter((q) => q.id !== id);
+  persistQuoteHistory(history);
+}
+
+// --- Review history ---
+
+export interface LocalReview {
+  id: string;
+  requirements: string;
+  result: SpecReviewResult;
+  createdAt: string;
+}
+
+function loadReviewHistory(): LocalReview[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(REVIEW_HISTORY_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as LocalReview[];
+  } catch {
+    return [];
+  }
+}
+
+function persistReviewHistory(reviews: LocalReview[]) {
+  localStorage.setItem(REVIEW_HISTORY_KEY, JSON.stringify(reviews));
+}
+
+export function saveReviewToHistory(
+  requirements: string,
+  result: SpecReviewResult
+): { reviewId: string } {
+  const reviewId = crypto.randomUUID();
+
+  const entry: LocalReview = {
+    id: reviewId,
+    requirements,
+    result,
+    createdAt: new Date().toISOString(),
+  };
+
+  const history = loadReviewHistory();
+  history.unshift(entry);
+
+  if (history.length > MAX_ITEMS) {
+    history.length = MAX_ITEMS;
+  }
+
+  persistReviewHistory(history);
+  return { reviewId };
+}
+
+export function getReviewHistory(): SavedReviewListItem[] {
+  return loadReviewHistory().map((r) => ({
+    id: r.id,
+    summary: r.result.summary,
+    qualityScore: r.result.qualityScore,
+    findingCount: r.result.findings.length,
+    criticalCount: r.result.findings.filter((f) => f.severity === "critical").length,
+    provider: r.result.provider,
+    createdAt: new Date(r.createdAt),
+  }));
+}
+
+export function getReviewById(id: string): LocalReview | undefined {
+  return loadReviewHistory().find((r) => r.id === id);
+}
+
+export function deleteReview(id: string) {
+  const history = loadReviewHistory().filter((r) => r.id !== id);
+  persistReviewHistory(history);
+}
+
+// --- Combined history ---
+
+export function getCombinedHistory(): HistoryItem[] {
+  const quotes: HistoryItem[] = getQuoteHistory().map((item) => ({
+    type: "quote",
+    item,
+  }));
+
+  const reviews: HistoryItem[] = getReviewHistory().map((item) => ({
+    type: "review",
+    item,
+  }));
+
+  return [...quotes, ...reviews].sort(
+    (a, b) => b.item.createdAt.getTime() - a.item.createdAt.getTime()
+  );
 }
